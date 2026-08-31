@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/erp';
 
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: ['http://localhost:3000','https://supermarketerp.vercel.app/' ], credentials: true }));
 app.use(express.json());
 
 app.get('/', (req, res) => res.json({ service: 'Supermarket ERP API', status: 'online' }));
