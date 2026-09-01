@@ -64,4 +64,3 @@ async function updatePasswordById(id, newPassword) {
 
 module.exports = { createUser, findByEmail, findById, listUsers, updateUser, deleteUser, seedDefaultUsers, setPasswordResetToken, findByResetTokenHash, updatePasswordById };
 
-module.exports = { createUser, findByEmail, findById, listUsers, updateUser, deleteUser, seedDefaultUsers };

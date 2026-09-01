@@ -24,6 +24,12 @@ app.use('/api/customers', require('./routes/customer.routes'));
 app.use('/api/stock-transfers', require('./routes/stockTransfer.routes'));
 app.use('/api/inventory', require('./routes/inventory.routes'));
 app.use('/api/sales', require('./routes/sale.routes'));
+app.use('/api/suppliers', require('./routes/supplier.routes'));
+app.use('/api/purchase-orders', require('./routes/purchaseOrder.routes'));
+app.use('/api/posts', require('./routes/post.routes'));
+app.use('/api/cms', require('./routes/post.routes'));
+// inventory adjustments (POST /api/inventory/adjust) will be handled in inventory.routes
+
 // mount additional modules
 app.use('/api/pos', require('./routes/pos.routes'));
 app.use('/api/payments', require('./routes/payments.routes'));
