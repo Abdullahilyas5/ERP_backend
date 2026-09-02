@@ -8,8 +8,8 @@ async function requireAuth(req, res, next) {
   const user = await verifyToken(token);
   if (!user) return res.status(401).json({ message: 'Invalid or expired token.' });
   // normalize permissions
-  user.permissions = user.permissions && user.permissions.length ? user.permissions : ROLE_PERMISSIONS[user.role] || [];
-  req.user = { id: user._id || user.id, email: user.email, role: user.role, permissions: user.permissions };
+  user.permissions = user.permissionsConfigured ? (user.permissions || []) : ROLE_PERMISSIONS[user.role] || [];
+  req.user = { id: user._id || user.id, name: user.name, email: user.email, role: user.role, permissions: user.permissions };
   return next();
 }
 
@@ -26,4 +26,14 @@ function authorize(permissionKey) {
   };
 }
 
-module.exports = { requireAuth, authorize };
+function authorizeAny(...permissionKeys) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: 'Authentication required.' });
+    if (!permissionKeys.some((permissionKey) => hasPermission(req.user, permissionKey))) {
+      return res.status(403).json({ message: 'You are not authorized to access this module.' });
+    }
+    return next();
+  };
+}
+
+module.exports = { requireAuth, authorize, authorizeAny };

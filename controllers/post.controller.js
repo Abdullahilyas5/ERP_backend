@@ -9,6 +9,7 @@ async function listPosts(req, res) {
     if (category && category !== 'All') {
       filter.category = category;
     }
+
     if (status && status !== 'All') {
       filter.status = status;
     }
@@ -36,6 +37,20 @@ async function listPosts(req, res) {
   } catch (err) {
     console.error('listPosts error', err);
     return res.status(500).json({ message: 'Internal server error.' });
+  }
+}
+
+async function listPublicPosts(req, res) {
+  try {
+    const { limit = 6 } = req.query;
+    const posts = await Post.find({ status: 'Published', publishedAt: { $ne: null, $lte: new Date() } })
+      .sort({ pinned: -1, publishedAt: -1, createdAt: -1 })
+      .limit(Number(limit))
+      .lean();
+    return res.json({ posts });
+  } catch (err) {
+    console.error('listPublicPosts error', err);
+    return res.status(500).json({ message: 'Unable to load published articles.' });
   }
 }
 
@@ -126,4 +141,4 @@ async function deletePost(req, res) {
   }
 }
 
-module.exports = { listPosts, getPost, createPost, updatePost, deletePost };
+module.exports = { listPosts, listPublicPosts, getPost, createPost, updatePost, deletePost };

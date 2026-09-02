@@ -1,4 +1,6 @@
 const productService = require('../services/product.service');
+const Warehouse = require('../models/warehouse.model');
+const InventoryTransaction = require('../models/inventoryTransaction.model');
 
 async function listProducts(req, res) {
   try {
@@ -18,7 +20,33 @@ async function createProduct(req, res) {
     if (!payload.name || !payload.sku || payload.price == null || payload.category == null) {
       return res.status(400).json({ message: 'name, sku, price and category are required.' });
     }
-    const created = await productService.createProduct(payload);
+    if (!payload.warehouseId) {
+      return res.status(400).json({ message: 'warehouseId is required.' });
+    }
+    const warehouse = await Warehouse.findOne({ _id: payload.warehouseId, status: 'Active' }).lean().catch(() => null);
+    if (!warehouse) return res.status(400).json({ message: 'The selected warehouse is not available.' });
+    const created = await productService.createProduct({
+      ...payload,
+      warehouseId: warehouse._id,
+      warehouseName: warehouse.name,
+    });
+    const stock = Number(created.stock || 0);
+    if (stock > 0) {
+      await Warehouse.updateOne({ _id: warehouse._id }, {
+        $inc: { stockUnits: stock, stockValue: stock * Number(created.costPrice || created.price || 0), productCount: 1, movementCount: 1 },
+      });
+      await InventoryTransaction.create({
+        productId: created._id,
+        warehouseId: warehouse._id,
+        qty: stock,
+        type: 'receipt',
+        ref: created._id,
+        createdBy: req.user?.id,
+        notes: 'Initial stock for newly created product',
+      });
+    } else {
+      await Warehouse.updateOne({ _id: warehouse._id }, { $inc: { productCount: 1 } });
+    }
     return res.status(201).json(created);
   } catch (err) {
     console.error('createProduct error', err);

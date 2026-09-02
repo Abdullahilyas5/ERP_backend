@@ -4,7 +4,7 @@ const InventoryTransaction = require('../models/inventoryTransaction.model');
 
 async function getInventoryOverview(req, res) {
   try {
-    const products = await Product.find().lean();
+    const products = await Product.find().populate('warehouseId', 'name code').lean();
     
     let totalStockUnits = 0;
     let totalValuation = 0;
@@ -103,7 +103,7 @@ async function getInventoryTransactions(req, res) {
 }
 
 // Adjust inventory:
-// items = [{ productId or sku, qty, mode: 'delta' | 'set', reason, notes }]
+// items = [{ productId or sku, qty, mode: 'delta' | 'set', reason, notes, warehouseId }]
 async function adjustInventory(req, res) {
   try {
     const items = Array.isArray(req.body.items) ? req.body.items : (req.body.productId ? [req.body] : []);
@@ -111,9 +111,11 @@ async function adjustInventory(req, res) {
 
     const results = [];
     for (const it of items) {
+      const warehouseId = it.warehouseId || req.body.warehouseId || null;
       let product = null;
       if (it.productId) product = await Product.findById(it.productId);
-      if (!product && it.sku) product = await Product.findOne({ sku: it.sku });
+      if (!product && it.sku) product = await Product.findOne({ sku: it.sku, ...(warehouseId ? { warehouseId } : {}) });
+      if (!product && warehouseId) product = await Product.findOne({ sku: it.sku });
       if (!product) {
         results.push({ ok: false, reason: 'Product not found', item: it });
         continue;
@@ -129,7 +131,7 @@ async function adjustInventory(req, res) {
         newStock = exactQty;
       } else {
         deltaQty = Number(it.qty || 0);
-        newStock = Math.max(0, currentStock + deltaQty);
+        newStock = currentStock + deltaQty;
       }
 
       if (deltaQty === 0 && it.mode !== 'set') {
@@ -137,7 +139,6 @@ async function adjustInventory(req, res) {
         continue;
       }
 
-      // Determine product status
       let newStatus = 'In Stock';
       const reorderLevel = Number(product.reorderLevel || 0);
       if (newStock <= 0) {
@@ -146,16 +147,15 @@ async function adjustInventory(req, res) {
         newStatus = 'Low Stock';
       }
 
-      // Update product in DB
       const updatedProduct = await Product.findByIdAndUpdate(
         product._id,
         { stock: newStock, status: newStatus },
         { new: true }
       );
 
-      // Record inventory transaction
       const inv = new InventoryTransaction({
         productId: product._id,
+        warehouseId: warehouseId || product.warehouseId || null,
         qty: deltaQty,
         type: 'adjustment',
         ref: req.body.ref || null,
@@ -163,9 +163,10 @@ async function adjustInventory(req, res) {
         createdBy: req.user?.id,
         metadata: {
           previousStock: currentStock,
-          newStock: newStock,
+          newStock,
           mode: it.mode || 'delta',
           reason: it.reason || 'Adjustment',
+          warehouseId: warehouseId || product.warehouseId || null,
         },
       });
       await inv.save();
@@ -175,9 +176,10 @@ async function adjustInventory(req, res) {
         productId: product._id,
         productName: product.name,
         previousStock: currentStock,
-        newStock: newStock,
+        newStock,
         deltaQty,
         status: newStatus,
+        updatedProduct,
       });
     }
 
@@ -189,4 +191,3 @@ async function adjustInventory(req, res) {
 }
 
 module.exports = { getInventoryOverview, getInventoryTransactions, adjustInventory };
-

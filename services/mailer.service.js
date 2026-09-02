@@ -7,9 +7,9 @@ function createTransporter() {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT || 587);
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const pass = process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
   if (!host || !user || !pass) {
-    console.warn('SMTP settings not fully configured. Mailer will throw if used.');
+    console.warn('SMTP settings not fully configured. Password reset emails cannot be sent.');
     return null;
   }
   transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });

@@ -2,7 +2,7 @@ const customerService = require('../services/customer.service');
 
 async function listCustomers(req, res) {
   try {
-    const { page = 1, limit = 100 } = req.query;
+    const { page = 1, limit = 10 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
     const customers = await customerService.listCustomers({}, { skip, limit });
     return res.json(customers);
@@ -15,11 +15,14 @@ async function listCustomers(req, res) {
 async function createCustomer(req, res) {
   try {
     const payload = req.body || {};
-    if (!payload.name) return res.status(400).json({ message: 'name is required.' });
+    if (!String(payload.name || '').trim()) return res.status(400).json({ message: 'name is required.' });
     const created = await customerService.createCustomer(payload);
     return res.status(201).json(created);
   } catch (err) {
     console.error('createCustomer error', err);
+    if (err.name === 'ValidationError' || err.code === 11000) {
+      return res.status(400).json({ message: err.code === 11000 ? 'Customer code already exists.' : err.message });
+    }
     return res.status(500).json({ message: 'Internal server error.' });
   }
 }

@@ -1,11 +1,15 @@
 const Expense = require('../models/expense.model');
+const Warehouse = require('../models/warehouse.model');
 
 async function listExpenses(req, res) {
   try {
     const { page = 1, limit = 100 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
-    const items = await Expense.find().skip(skip).limit(Number(limit)).lean();
-    return res.json(items);
+    const [items, total] = await Promise.all([
+      Expense.find().sort({ date: -1, createdAt: -1 }).skip(skip).limit(Number(limit)).lean(),
+      Expense.countDocuments(),
+    ]);
+    return res.json({ items, total, page: Number(page), limit: Number(limit) });
   } catch (err) {
     console.error('listExpenses error', err);
     return res.status(500).json({ message: 'Internal server error.' });
@@ -18,7 +22,18 @@ async function createExpense(req, res) {
     if (!payload.ref || !payload.category || payload.amount == null) {
       return res.status(400).json({ message: 'ref, category and amount are required.' });
     }
-    const created = await Expense.create(payload);
+    if (!payload.warehouseId) {
+      return res.status(400).json({ message: 'warehouseId is required.' });
+    }
+    const warehouse = await Warehouse.findOne({ _id: payload.warehouseId, status: 'Active' }).lean().catch(() => null);
+    if (!warehouse) {
+      return res.status(400).json({ message: 'The selected warehouse is not available.' });
+    }
+    const created = await Expense.create({
+      ...payload,
+      warehouseId: warehouse._id,
+      warehouse: warehouse.name,
+    });
     return res.status(201).json(created);
   } catch (err) {
     console.error('createExpense error', err);

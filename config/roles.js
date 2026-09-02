@@ -1,10 +1,10 @@
 const ROLE_PERMISSIONS = {
-  owner: ['users', 'products', 'inventory', 'suppliers', 'purchaseOrders', 'sales', 'customers', 'pos', 'cms', 'reports', 'payments', 'expenses', 'stockTransfers', 'financialReports'],
-  admin: ['users', 'products', 'inventory', 'suppliers', 'purchaseOrders', 'sales', 'customers', 'pos', 'cms', 'reports'],
-  manager: ['sales', 'inventory', 'suppliers', 'purchaseOrders', 'customers', 'cms', 'reports'],
-  cashier: ['pos', 'sales', 'customers'],
-  warehouse_staff: ['inventory', 'stockTransfers', 'suppliers', 'purchaseOrders'],
-  accountant: ['payments', 'expenses', 'financialReports', 'suppliers'],
+  owner: ['dashboard', 'users', 'products', 'inventory', 'warehouses', 'suppliers', 'purchaseOrders', 'sales', 'customers', 'pos', 'cms', 'reports', 'payments', 'expenses', 'stockTransfers', 'financialReports'],
+  admin: ['dashboard', 'users', 'products', 'inventory', 'warehouses', 'suppliers', 'purchaseOrders', 'sales', 'customers', 'pos', 'cms', 'reports', 'payments'],
+  manager: ['dashboard', 'sales', 'inventory', 'warehouses', 'suppliers', 'purchaseOrders', 'customers', 'cms', 'reports'],
+  cashier: ['pos', 'sales', 'customers', 'payments'],
+  warehouse_staff: ['inventory', 'warehouses', 'stockTransfers', 'suppliers', 'purchaseOrders'],
+  accountant: ['dashboard', 'payments', 'expenses', 'financialReports', 'suppliers'],
 };
 
 const ROLE_LABELS = {
@@ -17,6 +17,7 @@ const ROLE_LABELS = {
 };
 
 const MODULES = [
+  { key: 'dashboard', label: 'Overview & Insights', route: '/overview', roles: ['owner', 'admin', 'manager', 'accountant'] },
   { key: 'users', label: 'Users', route: '/users', roles: ['owner', 'admin'] },
   { key: 'products', label: 'Products', route: '/products', roles: ['owner', 'admin', 'manager', 'cashier'] },
   { key: 'inventory', label: 'Inventory', route: '/inventory', roles: ['owner', 'admin', 'manager', 'warehouse_staff'] },
@@ -27,7 +28,7 @@ const MODULES = [
   { key: 'cms', label: 'CMS & Announcements', route: '/cms', roles: ['owner', 'admin', 'manager'] },
   { key: 'reports', label: 'Reports', route: '/reports', roles: ['owner', 'admin', 'manager'] },
   { key: 'stockTransfers', label: 'Stock Transfers', route: '/stock-transfers', roles: ['owner', 'warehouse_staff'] },
-  { key: 'payments', label: 'Payments', route: '/payments', roles: ['owner', 'accountant'] },
+  { key: 'payments', label: 'Payments', route: '/payments', roles: ['owner', 'admin', 'cashier', 'accountant'] },
   { key: 'expenses', label: 'Expenses', route: '/expenses', roles: ['owner', 'accountant'] },
   { key: 'financialReports', label: 'Financial Reports', route: '/financial-reports', roles: ['owner', 'accountant'] },
 ];

@@ -3,7 +3,7 @@ const Product = require('../models/product.model');
 
 async function listSales(req, res) {
   try {
-    const { page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 10 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
     const sales = await saleService.listSales({}, { skip, limit });
     return res.json(sales);
@@ -15,7 +15,17 @@ async function listSales(req, res) {
 
 async function createSale(req, res) {
   try {
-    const { items = [], channel = 'Cash', customer } = req.body || {};
+    const {
+      items = [],
+      channel = 'Cash',
+      customer,
+      paymentMethod = channel,
+      paidAmount,
+      warehouseId,
+      warehouseName,
+      cashAccount,
+      accountType,
+    } = req.body || {};
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'At least one item required.' });
 
     // compute subtotal and totals server-side
@@ -37,7 +47,23 @@ async function createSale(req, res) {
     const total = Number((subtotal + tax).toFixed(2));
     const invoiceId = `INV-${Date.now()}`;
 
-    const sale = await saleService.createSale({ invoiceId, items: normalizedItems, subtotal, tax, total, customer, channel, status: 'Paid', createdBy: req.user?.id });
+    const sale = await saleService.createSale({
+      invoiceId,
+      items: normalizedItems,
+      subtotal,
+      tax,
+      total,
+      paidAmount: paidAmount == null ? total : Number(paidAmount),
+      customer,
+      channel,
+      paymentMethod,
+      warehouseId,
+      warehouseName,
+      cashAccount,
+      accountType,
+      status: 'Paid',
+      createdBy: req.user?.id,
+    });
 
     return res.status(201).json(sale);
   } catch (err) {

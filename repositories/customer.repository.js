@@ -1,13 +1,25 @@
 const Customer = require('../models/customer.model');
 
 async function createCustomer(data) {
-  const c = new Customer(data);
+  const payload = { ...data };
+  if (!payload.customerCode || !String(payload.customerCode).trim()) {
+    payload.customerCode = `C-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  }
+  payload.name = String(payload.name || '').trim();
+  if (!payload.name) throw new Error('Customer name is required.');
+  const c = new Customer(payload);
   return c.save();
 }
 
 async function listCustomers(filter = {}, opts = {}) {
   const { skip = 0, limit = 100 } = opts;
-  return Customer.find(filter).skip(Number(skip)).limit(Number(limit)).lean();
+  const normalizedLimit = Math.max(1, Number(limit) || 100);
+  const normalizedSkip = Math.max(0, Number(skip) || 0);
+  const [items, total] = await Promise.all([
+    Customer.find(filter).sort({ createdAt: -1 }).skip(normalizedSkip).limit(normalizedLimit).lean(),
+    Customer.countDocuments(filter),
+  ]);
+  return { items, total, page: Math.floor(normalizedSkip / normalizedLimit) + 1, limit: normalizedLimit };
 }
 
 async function getCustomerById(id) {
