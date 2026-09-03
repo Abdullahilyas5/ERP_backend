@@ -150,7 +150,7 @@ async function adjustInventory(req, res) {
       const updatedProduct = await Product.findByIdAndUpdate(
         product._id,
         { stock: newStock, status: newStatus },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const inv = new InventoryTransaction({

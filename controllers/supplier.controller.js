@@ -1,5 +1,6 @@
 const supplierService = require('../services/supplier.service');
 const PurchaseOrder = require('../models/purchaseOrder.model');
+const Product = require('../models/product.model');
 
 async function listSuppliers(req, res) {
   try {
@@ -79,7 +80,8 @@ async function getSupplier(req, res) {
       console.warn('Could not load POs for supplier', e.message);
     }
 
-    return res.json({ ...s, purchaseOrders });
+    const products = await Product.find({ supplierId: req.params.id }).select('name sku category stock price sellingPrice').sort({ name: 1 }).lean();
+    return res.json({ ...s, purchaseOrders, products });
   } catch (err) {
     console.error('getSupplier error', err);
     return res.status(500).json({ message: 'Internal server error.' });
@@ -127,4 +129,3 @@ async function deleteSupplier(req, res) {
 }
 
 module.exports = { listSuppliers, createSupplier, getSupplier, updateSupplier, deleteSupplier };
-

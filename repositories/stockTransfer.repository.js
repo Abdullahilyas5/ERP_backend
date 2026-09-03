@@ -59,7 +59,7 @@ async function createTransfer(data = {}) {
   const savedTransfer = await StockTransfer.findOneAndUpdate(
     { transferId },
     { $setOnInsert: { transferId } },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
   );
 
   const session = await mongoose.startSession();
@@ -73,17 +73,26 @@ async function createTransfer(data = {}) {
       let totalQty = 0;
 
       for (const item of normalizedItems) {
-        const query = item.productId && mongoose.isValidObjectId(item.productId)
-          ? { _id: item.productId }
-          : { sku: item.sku || item.productId };
-
-        const sourceProduct = await Product.findOne({
-          ...query,
-          $or: [
-            { warehouseId: fromWarehouseId },
-            { warehouseId: { $in: [null, undefined] } },
-          ],
-        }).sort({ createdAt: -1 }).session(session);
+        const productIdentifier = item.productId || item.sku;
+        let sourceProduct = item.productId && mongoose.isValidObjectId(item.productId)
+          ? await Product.findById(item.productId).session(session)
+          : null;
+        if (!sourceProduct && productIdentifier) {
+          const sku = item.sku || productIdentifier;
+          sourceProduct = await Product.findOne({ sku }).sort({ createdAt: -1 }).session(session);
+        }
+        if (sourceProduct?.warehouseId &&
+            String(sourceProduct.warehouseId) !== String(fromWarehouseId)) {
+          sourceProduct = null;
+        }
+        if (!sourceProduct && item.sku) {
+          sourceProduct = await Product.findOne({ sku: item.sku, warehouseId: fromWarehouseId })
+            .sort({ createdAt: -1 }).session(session);
+        }
+        if (!sourceProduct && item.productId && !mongoose.isValidObjectId(item.productId)) {
+          sourceProduct = await Product.findOne({ sku: item.productId, warehouseId: fromWarehouseId })
+            .sort({ createdAt: -1 }).session(session);
+        }
 
         if (!sourceProduct) {
           throw new Error(`Product not found for transfer: ${item.sku || item.productId || 'unknown'}`);
@@ -184,7 +193,7 @@ async function createTransfer(data = {}) {
             metadata: { ...data.metadata, transferId },
           }
         },
-        { new: true, session }
+        { returnDocument: 'after', session }
       ).lean();
     };
 
@@ -210,7 +219,7 @@ async function getTransferById(id) {
 }
 
 async function updateTransfer(id, patch = {}) {
-  return StockTransfer.findByIdAndUpdate(id, patch, { new: true }).lean();
+  return StockTransfer.findByIdAndUpdate(id, patch, { returnDocument: 'after' }).lean();
 }
 
 async function deleteTransfer(id) {

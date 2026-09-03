@@ -19,7 +19,7 @@ async function getSupplierById(id) {
 }
 
 async function updateSupplier(id, patch) {
-  return Supplier.findByIdAndUpdate(id, patch, { new: true, runValidators: true }).lean();
+  return Supplier.findByIdAndUpdate(id, patch, { returnDocument: 'after', runValidators: true }).lean();
 }
 
 async function deleteSupplier(id) {
@@ -27,4 +27,3 @@ async function deleteSupplier(id) {
 }
 
 module.exports = { createSupplier, listSuppliers, countSuppliers, getSupplierById, updateSupplier, deleteSupplier };
-

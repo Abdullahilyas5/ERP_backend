@@ -13,6 +13,7 @@ const productSchema = new mongoose.Schema({
   marginPercent: { type: Number, default: 0 },
   warehouseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse' },
   warehouseName: { type: String, default: '' },
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   stock: { type: Number, default: 0 },
   reorderLevel: { type: Number, default: 0 },
   status: { type: String, enum: ['In Stock', 'Low Stock', 'Out of Stock'], default: 'In Stock' },

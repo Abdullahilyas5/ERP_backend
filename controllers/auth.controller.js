@@ -5,6 +5,9 @@ const userService = require('../services/user.service');
 const userRepo = require('../repositories/user.repository');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const crypto = require('crypto');
+const mailer = require('../services/mailer.service');
+const OTP_EXPIRY_MS = 10 * 60 * 1000;
 
 function normalizeEmail(email) {
   return typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -24,6 +27,9 @@ async function login(req, res) {
     const user = await authenticate(normalizedEmail, password);
     if (!user) {
       const candidate = await userRepo.findByEmail(normalizedEmail);
+      if (candidate && candidate.emailVerified === false) {
+        return res.status(403).json({ message: 'Please verify your email before logging in.' });
+      }
       if (candidate && candidate.approvalStatus === 'pending') {
         return res.status(403).json({ message: 'Your account is awaiting owner approval before you can access the ERP.' });
       }
@@ -52,13 +58,61 @@ async function signup(req, res) {
     if (passwordError) return res.status(400).json({ message: passwordError });
 
     // Public registration must never allow callers to grant themselves elevated roles.
-    const created = await userRepo.createUser({ name: normalizedName, email: normalizedEmail, password, role: 'cashier' });
-    return res.status(201).json({ id: created._id, name: created.name, email: created.email, role: created.role, approvalStatus: created.approvalStatus, message: 'Account created. An owner must approve it before first login.' });
+    const created = await userRepo.createUser({ name: normalizedName, email: normalizedEmail, password, role: 'cashier', emailVerified: false });
+    try {
+      await sendVerificationEmail(normalizedEmail);
+    } catch (mailErr) {
+      console.error('Failed to send verification email', mailErr);
+      return res.status(503).json({ message: 'Account created, but the verification email could not be sent. Please try resending it.' });
+    }
+    return res.status(201).json({ id: created._id, name: created.name, email: created.email, role: created.role, approvalStatus: created.approvalStatus, message: 'Account created. Check your email for the verification code.' });
   } catch (err) {
     console.error('Signup error', err);
     if (err.code === 11000) return res.status(409).json({ message: 'Email already in use.' });
     return res.status(500).json({ message: 'Internal server error.' });
   }
+}
+
+function smtpConfigured() {
+    return process.env.SMTP_HOST && process.env.SMTP_USER && (process.env.SMTP_PASS || process.env.SMTP_PASSWORD);
+  }
+
+async function sendVerificationEmail(email) {
+    if (!smtpConfigured()) throw new Error('SMTP not configured');
+    const otp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    await userRepo.setEmailVerificationOtp(email, otpHash, new Date(Date.now() + OTP_EXPIRY_MS));
+    await mailer.sendMail({
+      to: email,
+      subject: 'Verify your ERP email',
+      text: `Your ERP verification code is ${otp}. It expires in 10 minutes.`,
+      html: `<p>Your ERP verification code is <strong>${otp}</strong>.</p><p>This code expires in 10 minutes.</p>`,
+    });
+  }
+
+async function verifyEmail(req, res) {
+    const email = normalizeEmail(req.body?.email);
+    const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+    if (!EMAIL_PATTERN.test(email) || !/^\d{6}$/.test(otp)) return res.status(400).json({ message: 'A valid email and 6-digit verification code are required.' });
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const user = await userRepo.findByEmailVerificationOtp(email, otpHash);
+    if (!user) return res.status(400).json({ message: 'Invalid or expired verification code.' });
+    await userRepo.markEmailVerified(user._id || user.id);
+    return res.json({ message: 'Email verified. Your account must be approved by the owner before you can log in.' });
+  }
+
+async function resendVerification(req, res) {
+    const email = normalizeEmail(req.body?.email);
+    if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ message: 'Please enter a valid email address.' });
+    const user = await userRepo.findByEmail(email);
+    if (!user || user.emailVerified === true) return res.json({ message: 'If the account requires verification, a new code has been sent.' });
+    try {
+      await sendVerificationEmail(email);
+    } catch (err) {
+      console.error('Failed to resend verification email', err);
+      return res.status(503).json({ message: 'Unable to send the verification email. Check the server email configuration.' });
+    }
+    return res.json({ message: 'If the account requires verification, a new code has been sent.' });
 }
 
 async function forgotPassword(req, res) {
@@ -101,10 +155,12 @@ async function updateProfile(req, res) {
   try {
     const { name, email, currentPassword, newPassword } = req.body || {};
     if (!name || String(name).trim().length < 2) return res.status(400).json({ message: 'Name must be at least 2 characters long.' });
-    if (email && !EMAIL_PATTERN.test(normalizeEmail(email))) return res.status(400).json({ message: 'Please enter a valid email address.' });
     const user = await userRepo.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
-    const patch = { name: String(name).trim(), email: normalizeEmail(email || user.email) };
+    if (email && normalizeEmail(email) !== normalizeEmail(user.email)) {
+      return res.status(403).json({ message: 'Email addresses cannot be changed from profile settings.' });
+    }
+    const patch = { name: String(name).trim() };
     if (newPassword) {
       const bcrypt = require('bcryptjs');
       if (!currentPassword || !(await bcrypt.compare(currentPassword, user.passwordHash))) return res.status(400).json({ message: 'Current password is incorrect.' });
@@ -142,8 +198,17 @@ async function resetPassword(req, res) {
   }
 }
 
-module.exports = { login, me, signup, forgotPassword, resetPassword, updateProfile };
+module.exports = { login, me, signup, verifyEmail, resendVerification, forgotPassword, resetPassword, updateProfile };
 
 function me(req, res) {
-  return res.json({ user: req.user });
+  // Keep the account endpoint limited to non-sensitive profile data.
+  return res.json({
+    user: {
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role,
+      permissions: req.user.permissions,
+    },
+  });
 }

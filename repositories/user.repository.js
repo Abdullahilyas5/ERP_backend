@@ -1,7 +1,7 @@
 const User = require('../models/user.model');
 const bcrypt = require('bcryptjs');
 
-async function createUser({ name, email, password, role, permissions = [] }) {
+async function createUser({ name, email, password, role, permissions = [], emailVerified = true }) {
   const passwordHash = await bcrypt.hash(password, 10);
   const user = new User({
     name,
@@ -12,8 +12,34 @@ async function createUser({ name, email, password, role, permissions = [] }) {
     permissionsConfigured: false,
     isActive: false,
     approvalStatus: 'pending',
+    emailVerified,
   });
   return user.save();
+}
+
+async function setEmailVerificationOtp(email, otpHash, expiresAt) {
+  return User.findOneAndUpdate(
+    { email: String(email).trim().toLowerCase() },
+    { emailVerificationOtpHash: otpHash, emailVerificationOtpExpires: expiresAt },
+    { returnDocument: 'after' },
+  ).lean();
+}
+
+async function findByEmailVerificationOtp(email, otpHash) {
+  return User.findOne({
+    email: String(email).trim().toLowerCase(),
+    emailVerificationOtpHash: otpHash,
+    emailVerificationOtpExpires: { $gt: new Date() },
+    emailVerified: false,
+  }).lean();
+}
+
+async function markEmailVerified(id) {
+  return User.findByIdAndUpdate(
+    id,
+    { emailVerified: true, emailVerificationOtpHash: null, emailVerificationOtpExpires: null },
+    { returnDocument: 'after' },
+  ).lean();
 }
 
 async function findByEmail(email) {
@@ -41,14 +67,14 @@ async function updateUser(id, patch) {
     delete changes.password;
   }
 
-  return User.findByIdAndUpdate(id, changes, { new: true, runValidators: true }).lean();
+  return User.findByIdAndUpdate(id, changes, { returnDocument: 'after', runValidators: true }).lean();
 }
 
 async function approveUser(id, approvedBy) {
   return User.findByIdAndUpdate(
     id,
     { isActive: true, approvalStatus: 'approved', approvedBy, approvedAt: new Date() },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   ).lean();
 }
 
@@ -60,7 +86,7 @@ async function setUserActive(id, isActive, approvedBy) {
       approvalStatus: isActive ? 'approved' : 'rejected',
       ...(isActive ? { approvedBy, approvedAt: new Date() } : {}),
     },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   ).lean();
 }
 
@@ -72,7 +98,7 @@ async function setPasswordResetToken(email, tokenHash, expiresAt) {
   return User.findOneAndUpdate(
     { email: String(email).trim().toLowerCase() },
     { passwordResetTokenHash: tokenHash, passwordResetExpires: expiresAt },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
 }
 
@@ -85,7 +111,7 @@ async function updatePasswordById(id, newPassword) {
   return User.findByIdAndUpdate(
     id,
     { passwordHash, passwordResetTokenHash: null, passwordResetExpires: null },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
 }
 
@@ -101,4 +127,7 @@ module.exports = {
   setPasswordResetToken,
   findByResetTokenHash,
   updatePasswordById,
+  setEmailVerificationOtp,
+  findByEmailVerificationOtp,
+  markEmailVerified,
 };

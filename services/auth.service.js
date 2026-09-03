@@ -9,7 +9,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 async function authenticate(email, password) {
   if (mongoose.connection.readyState !== 1) throw databaseUnavailableError();
   const user = await findByEmail(email);
-  if (!user || !user.isActive || user.approvalStatus === 'pending' || user.approvalStatus === 'rejected') return null;
+  if (!user || user.emailVerified === false || !user.isActive || user.approvalStatus === 'pending' || user.approvalStatus === 'rejected') return null;
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return null;
   return user;
@@ -32,7 +32,7 @@ async function verifyToken(token) {
     if (mongoose.connection.readyState !== 1) return null;
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await findById(decoded.id || decoded.sub);
-    if (!user || !user.isActive || user.approvalStatus === 'pending' || user.approvalStatus === 'rejected') return null;
+    if (!user || user.emailVerified === false || !user.isActive || user.approvalStatus === 'pending' || user.approvalStatus === 'rejected') return null;
     return user;
   } catch (err) {
     return null;

@@ -19,9 +19,10 @@ async function listExpenses(req, res) {
 async function createExpense(req, res) {
   try {
     const payload = req.body || {};
-    if (!payload.ref || !payload.category || payload.amount == null) {
-      return res.status(400).json({ message: 'ref, category and amount are required.' });
+    if (!payload.category || payload.amount == null) {
+      return res.status(400).json({ message: 'category and amount are required.' });
     }
+    const reference = String(payload.ref || '').trim() || `EXP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     if (!payload.warehouseId) {
       return res.status(400).json({ message: 'warehouseId is required.' });
     }
@@ -31,6 +32,7 @@ async function createExpense(req, res) {
     }
     const created = await Expense.create({
       ...payload,
+      ref: reference,
       warehouseId: warehouse._id,
       warehouse: warehouse.name,
     });
@@ -55,7 +57,7 @@ async function getExpense(req, res) {
 
 async function updateExpense(req, res) {
   try {
-    const updated = await Expense.findByIdAndUpdate(req.params.id, req.body || {}, { new: true }).lean();
+    const updated = await Expense.findByIdAndUpdate(req.params.id, req.body || {}, { returnDocument: 'after' }).lean();
     if (!updated) return res.status(404).json({ message: 'Expense not found.' });
     return res.json(updated);
   } catch (err) {

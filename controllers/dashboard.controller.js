@@ -23,6 +23,19 @@ function dateKey(date) {
   ].join('-');
 }
 
+function parseDate(value) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime()) || dateKey(date) !== value) return null;
+  return startOfDay(date);
+}
+
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
 function comparison(today, yesterday, hasPreviousData = true) {
   const current = Number(today || 0);
   const previous = yesterday == null ? null : Number(yesterday || 0);
@@ -59,15 +72,56 @@ async function dailySales(start, end) {
   return result[0] || { total: 0, count: 0 };
 }
 
+async function salesInsights(start, end, timezone = 'UTC') {
+  const [trend, heatmap] = await Promise.all([
+    Sale.aggregate([
+      { $match: { createdAt: { $gte: start, $lt: end }, status: { $in: PAID_SALE_STATUSES } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone } }, value: { $sum: { $ifNull: ['$total', 0] } }, transactions: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]),
+    Sale.aggregate([
+      { $match: { createdAt: { $gte: start, $lt: end }, status: { $in: PAID_SALE_STATUSES } } },
+      { $group: { _id: { day: { $dayOfWeek: { date: '$createdAt', timezone } }, hour: { $hour: { date: '$createdAt', timezone } } }, value: { $sum: { $ifNull: ['$total', 0] } }, transactions: { $sum: 1 } } },
+    ]),
+  ]);
+  const byDate = new Map(trend.map((item) => [item._id, item]));
+  const filledTrend = [];
+  for (let date = new Date(start); date < end; date = addDays(date, 1)) {
+    const item = byDate.get(dateKey(date));
+    filledTrend.push({ label: dateKey(date), value: money(item?.value), transactions: item?.transactions || 0 });
+  }
+  return {
+    trend: filledTrend,
+    heatmap: heatmap.map((item) => ({ day: item._id.day - 1, hour: item._id.hour, value: money(item.value), transactions: item.transactions })),
+  };
+}
+
 async function getDashboard(req, res) {
   try {
     const today = startOfDay(new Date());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    const requestedStart = req.query.startDate ? parseDate(req.query.startDate) : today;
+    const requestedEnd = req.query.endDate ? parseDate(req.query.endDate) : requestedStart;
+    if (!requestedStart || !requestedEnd) {
+      return res.status(400).json({ message: 'Dates must use YYYY-MM-DD format.' });
+    }
+    const selectedStart = requestedStart;
+    const selectedEnd = addDays(requestedEnd, 1);
+    if (selectedEnd <= selectedStart || (selectedEnd - selectedStart) > 366 * 86400000) {
+      return res.status(400).json({ message: 'Select a valid date range of up to one year.' });
+    }
+    const periodDays = Math.round((selectedEnd - selectedStart) / 86400000);
+    const previousStart = addDays(selectedStart, -periodDays);
+    const previousEnd = selectedStart;
+    const tomorrow = addDays(today, 1);
+    const yesterday = addDays(today, -1);
 
-    const [todaySales, yesterdaySales, activeCustomers, activeYesterday, newCustomersToday, newCustomersYesterday, products, inventoryChanges] = await Promise.all([
+    const timezone = typeof req.query.timezone === 'string' && /^[A-Za-z_]+(?:\/[A-Za-z_+-]+)+$/.test(req.query.timezone)
+      ? req.query.timezone
+      : 'UTC';
+    const [periodSales, previousSales, insights, todaySales, yesterdaySales, activeCustomers, activeYesterday, newCustomersToday, newCustomersYesterday, products, inventoryChanges] = await Promise.all([
+      dailySales(selectedStart, selectedEnd),
+      dailySales(previousStart, previousEnd),
+      salesInsights(selectedStart, selectedEnd, timezone),
       dailySales(today, tomorrow),
       dailySales(yesterday, today),
       Customer.countDocuments({ status: 'Active' }),
@@ -89,8 +143,8 @@ async function getDashboard(req, res) {
       return sum + (Number(product.price || 0) * yesterdayStock);
     }, 0);
 
-    const salesToday = money(todaySales.total);
-    const salesYesterday = money(yesterdaySales.total);
+    const salesToday = money(periodSales.total);
+    const salesYesterday = money(previousSales.total);
     const inventoryToday = money(inventoryValue);
     const inventoryYesterday = money(inventoryValueYesterday);
     return res.json({
@@ -98,21 +152,24 @@ async function getDashboard(req, res) {
       inventoryValue: `$${inventoryToday.toFixed(2)}`,
       activeCustomers,
       newCustomersToday,
-      transactions: todaySales.count,
-      metricDate: dateKey(today),
+      transactions: periodSales.count,
+      metricDate: `${dateKey(selectedStart)} to ${dateKey(addDays(selectedEnd, -1))}`,
       grossSalesToday: salesToday,
       grossSalesYesterday: salesYesterday,
       inventoryValueToday: inventoryToday,
       inventoryValueYesterday: inventoryYesterday,
       activeCustomersYesterday: activeYesterday,
       newCustomersYesterday,
-      transactionsToday: todaySales.count,
-      transactionsYesterday: yesterdaySales.count,
+      transactionsToday: periodSales.count,
+      transactionsYesterday: previousSales.count,
+      salesTrend: insights.trend,
+      salesHeatmap: insights.heatmap,
+      range: { startDate: dateKey(selectedStart), endDate: dateKey(addDays(selectedEnd, -1)), days: periodDays },
       comparisons: {
         grossSales: comparison(salesToday, salesYesterday),
         inventoryValue: comparison(inventoryToday, inventoryYesterday),
         activeCustomers: comparison(activeCustomers, activeYesterday),
-        transactions: comparison(todaySales.count, yesterdaySales.count),
+        transactions: comparison(periodSales.count, previousSales.count),
         newCustomers: comparison(newCustomersToday, newCustomersYesterday),
       },
     });

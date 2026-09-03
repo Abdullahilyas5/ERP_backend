@@ -2,7 +2,9 @@ const repo = require('../repositories/stockTransfer.repository');
 
 async function list(req, res) {
   try {
-    const items = await repo.listTransfers({}, {});
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 100));
+    const items = await repo.listTransfers({}, { skip: (page - 1) * limit, limit });
     res.json(items);
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error.' }); }
 }

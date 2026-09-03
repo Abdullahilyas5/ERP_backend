@@ -17,9 +17,10 @@ async function listProducts(req, res) {
 async function createProduct(req, res) {
   try {
     const payload = req.body || {};
-    if (!payload.name || !payload.sku || payload.price == null || payload.category == null) {
-      return res.status(400).json({ message: 'name, sku, price and category are required.' });
+    if (!payload.name || payload.price == null || payload.category == null) {
+      return res.status(400).json({ message: 'name, price and category are required.' });
     }
+    const sku = String(payload.sku || '').trim() || `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     if (!payload.warehouseId) {
       return res.status(400).json({ message: 'warehouseId is required.' });
     }
@@ -27,6 +28,7 @@ async function createProduct(req, res) {
     if (!warehouse) return res.status(400).json({ message: 'The selected warehouse is not available.' });
     const created = await productService.createProduct({
       ...payload,
+      sku,
       warehouseId: warehouse._id,
       warehouseName: warehouse.name,
     });

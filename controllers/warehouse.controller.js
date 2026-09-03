@@ -48,7 +48,7 @@ async function getWarehouse(req, res) {
 
 async function updateWarehouse(req, res) {
   try {
-    const item = await Warehouse.findByIdAndUpdate(req.params.id, req.body || {}, { new: true }).lean();
+    const item = await Warehouse.findByIdAndUpdate(req.params.id, req.body || {}, { returnDocument: 'after' }).lean();
     if (!item) return res.status(404).json({ message: 'Warehouse not found.' });
     return res.json(item);
   } catch (err) {

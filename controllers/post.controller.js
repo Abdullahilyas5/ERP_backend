@@ -59,7 +59,7 @@ async function getPost(req, res) {
     const post = await Post.findByIdAndUpdate(
       req.params.id,
       { $inc: { views: 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     ).populate('author', 'name email role');
 
     if (!post) return res.status(404).json({ message: 'Post not found.' });
@@ -121,7 +121,7 @@ async function updatePost(req, res) {
     }
     if (pinned !== undefined) patch.pinned = Boolean(pinned);
 
-    const updated = await Post.findByIdAndUpdate(req.params.id, patch, { new: true });
+    const updated = await Post.findByIdAndUpdate(req.params.id, patch, { returnDocument: 'after' });
     if (!updated) return res.status(404).json({ message: 'Post not found.' });
     return res.json(updated);
   } catch (err) {

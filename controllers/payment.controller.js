@@ -91,7 +91,7 @@ async function getPayment(req, res) {
 
 async function updatePayment(req, res) {
   try {
-    const updated = await Payment.findByIdAndUpdate(req.params.id, req.body || {}, { new: true }).lean();
+    const updated = await Payment.findByIdAndUpdate(req.params.id, req.body || {}, { returnDocument: 'after' }).lean();
     if (!updated) return res.status(404).json({ message: 'Payment not found.' });
     return res.json(updated);
   } catch (err) {

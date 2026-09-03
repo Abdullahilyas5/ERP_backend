@@ -1,8 +1,9 @@
 const Customer = require('../models/customer.model');
+const Sale = require('../models/sale.model');
 
 async function createCustomer(data) {
   const payload = { ...data };
-  if (!payload.customerCode || !String(payload.customerCode).trim()) {
+  if (!String(payload.customerCode || '').trim()) {
     payload.customerCode = `C-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   }
   payload.name = String(payload.name || '').trim();
@@ -19,7 +20,34 @@ async function listCustomers(filter = {}, opts = {}) {
     Customer.find(filter).sort({ createdAt: -1 }).skip(normalizedSkip).limit(normalizedLimit).lean(),
     Customer.countDocuments(filter),
   ]);
-  return { items, total, page: Math.floor(normalizedSkip / normalizedLimit) + 1, limit: normalizedLimit };
+  const customerIds = items.map((customer) => customer._id);
+  const orderStats = customerIds.length
+    ? await Sale.aggregate([
+      { $match: { customer: { $in: customerIds }, status: { $nin: ['Cancelled', 'Refunded'] } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$customer',
+          totalSpent: { $sum: { $ifNull: ['$total', 0] } },
+          orderCount: { $sum: 1 },
+          lastOrder: { $first: '$invoiceId' },
+          lastOrderDate: { $first: '$createdAt' },
+        },
+      },
+    ])
+    : [];
+  const statsByCustomer = new Map(orderStats.map((stats) => [String(stats._id), stats]));
+  const enrichedItems = items.map((customer) => {
+    const stats = statsByCustomer.get(String(customer._id));
+    return {
+      ...customer,
+      totalSpent: Number(stats?.totalSpent || 0),
+      orderCount: Number(stats?.orderCount || 0),
+      lastOrder: stats?.lastOrder || null,
+      lastOrderDate: stats?.lastOrderDate || null,
+    };
+  });
+  return { items: enrichedItems, total, page: Math.floor(normalizedSkip / normalizedLimit) + 1, limit: normalizedLimit };
 }
 
 async function getCustomerById(id) {
@@ -30,7 +58,7 @@ async function updateCustomer(id, patch) {
   if (patch.spend != null) patch.spend = Number(patch.spend);
   if (patch.visits != null) patch.visits = Number(patch.visits);
   if (patch.loyalty != null) patch.loyalty = Number(patch.loyalty);
-  return Customer.findByIdAndUpdate(id, patch, { new: true }).lean();
+  return Customer.findByIdAndUpdate(id, patch, { returnDocument: 'after' }).lean();
 }
 
 async function deleteCustomer(id) {

@@ -43,6 +43,8 @@ async function createSale(data = {}) {
   const subtotal = toNumber(data.subtotal, total);
   const tax = toNumber(data.tax, 0);
   const discount = toNumber(data.discount, 0);
+  const paidAmount = toNumber(data.paidAmount, 0);
+  const paymentId = data.paymentId || `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
   if (!usingDatabase()) {
     throw new Error('ERP database is unavailable; sales cannot be recorded.');
@@ -64,6 +66,10 @@ async function createSale(data = {}) {
         subtotal,
         tax,
         discount,
+        paidAmount,
+        balanceDue: toNumber(data.balanceDue, Math.max(0, total - paidAmount)),
+        changeDue: toNumber(data.changeDue, Math.max(0, paidAmount - total)),
+        paymentId,
         status: data.status || 'Completed',
         paymentStatus: data.paymentStatus || 'Paid',
       });
@@ -105,7 +111,7 @@ async function createSale(data = {}) {
       const paymentAmount = toNumber(data.paidAmount ?? data.total ?? savedSale.total, 0);
       if (paymentAmount > 0) {
         [savedPayment] = await Payment.create([{ 
-          paymentId: `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          paymentId,
           ref: savedSale.invoiceId,
           type: 'POS Payment',
           direction: 'incoming',
@@ -145,7 +151,7 @@ async function createSale(data = {}) {
   }
 
   const sale = await Sale.findById(savedSale._id).lean();
-  return { ...sale, paymentId: savedPayment?.paymentId || null };
+  return { ...sale, paymentId: sale.paymentId || savedPayment?.paymentId || null };
 }
 
 async function listSales(filter = {}, opts = {}) {
@@ -156,8 +162,8 @@ async function listSales(filter = {}, opts = {}) {
   if (!usingDatabase()) throw new Error('ERP database is unavailable; sales cannot be loaded.');
 
   const [items, total] = await Promise.all([
-    Sale.find(filter).sort({ createdAt: -1 }).skip(normalizedSkip).limit(normalizedLimit).lean().catch(() => []),
-    Sale.countDocuments(filter).catch(() => 0),
+    Sale.find(filter).sort({ createdAt: -1 }).skip(normalizedSkip).limit(normalizedLimit).lean(),
+    Sale.countDocuments(filter),
   ]);
 
   return {
@@ -171,7 +177,8 @@ async function listSales(filter = {}, opts = {}) {
 
 async function getSaleById(id) {
   if (!usingDatabase()) throw new Error('ERP database is unavailable; sales cannot be loaded.');
-  return Sale.findById(id).lean();
+  const byId = mongoose.isValidObjectId(id) ? await Sale.findById(id).lean() : null;
+  return byId || Sale.findOne({ invoiceId: id }).lean();
 }
 
 module.exports = { createSale, listSales, getSaleById };

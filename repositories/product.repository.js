@@ -15,7 +15,7 @@ async function getProductById(id) {
 }
 
 async function updateProduct(id, patch) {
-  return Product.findByIdAndUpdate(id, patch, { new: true, runValidators: true }).lean();
+  return Product.findByIdAndUpdate(id, patch, { returnDocument: 'after', runValidators: true }).lean();
 }
 
 async function deleteProduct(id) {
